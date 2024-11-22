@@ -547,7 +547,7 @@ alertcondition(bearishEngulfing, title="Bearish Engulfing", message="[CurrencyPa
 
 // ### Trading Session
 
-ts = input(title="Show Trade Session", type=input.bool, defval=true, group = "Trade Session")
+ts = input(title="Show Trade Session", type=input.bool, defval=false, group = "Trade Session")
 
 tz = input(title="Timezone", type=input.string, defval="America/Chicago", options=["Asia/Sydney", "Asia/Tokyo", "Europe/Frankfurt", "Europe/London", "UTC", "America/New_York", "America/Chicago"], group = "Trade Session")
 label = input(title="Label", type=input.string, defval="CME Open", tooltip="For easy identification", group = "Trade Session")
