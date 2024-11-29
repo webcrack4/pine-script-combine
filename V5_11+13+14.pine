@@ -1,0 +1,512 @@
+//@version=5
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//# * ══════════════════════════════════════════════════════════════════════════════════════════════
+//# *
+//# * Study       : MACD-X Overlay, More Than MACD
+//# * Author      : © dgtrd
+//# *
+//# * Revision History
+//# *  Release    : Mar 10, 2022 : Initial Release
+//# *
+//# * ══════════════════════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+
+indicator("MACD-X Overlay, More Than MACD by DGT", "MACD-X ʙʏ DGT ☼☾", true, max_lines_count = 500, max_boxes_count = 250, max_bars_back = 500)
+
+macdType      = input.string("MACD-SOURCE", "MACD Calculation Method", options=["MACD-TRADITIONAL", "MACD-AS (HISTOGRAM)", "MACD-LEADER", "MACD-SOURCE"])
+fast_length   = input.int(12, "Fast Length", minval = 1)
+slow_length   = input.int(26, "Slow Length", minval = 1)
+source        = input(close, "Source")
+signal_length = input.int(9, "Signal Smoothing",  minval = 1, maxval = 50)
+sma_source    = input.string("EMA", "Oscillator MA Type" , options=["SMA", "EMA"])
+sma_signal    = input.string("EMA", "Signal Line MA Type", options=["SMA", "EMA"])
+macdSigCross  = input.bool(false, "Display MACD/Signal Corsses")
+highlight     = input.bool(false, "Highlight MACD/Signal Area")
+lookbackLength= input.int(200, 'Overlay Indicator Display Length', minval = 10, maxval = 250) 
+oscPlacement  = input.string('Bottom', 'Placement', options = ['Top', 'Bottom'], inline='VOL')
+oscHight      = 12 - input.int(7, 'Hight' , minval = 1, maxval = 10  , inline='VOL' )
+verticalAdj   = input.int(3, "Vertical Indicator Position", minval = 0, maxval = 10) / 10
+
+ma(s, l, m) => m == "EMA" ? ta.ema(s, l) : ta.sma(s, l)
+
+fast_ma = ma(source, fast_length, sma_source)
+slow_ma = ma(source, slow_length, sma_source)
+macd    = fast_ma - slow_ma
+
+macd := if macdType == "MACD-TRADITIONAL"
+    macd
+else if macdType == "MACD-AS (HISTOGRAM)"
+    macd - ma(macd, signal_length, sma_source)
+else if macdType == "MACD-LEADER"
+    macd + ma(source - fast_ma, fast_length, sma_source) - ma(source - slow_ma, slow_length, sma_source)
+else
+    ma(source - math.avg(fast_ma, slow_ma), signal_length, sma_source)
+
+signal = ma(macd, signal_length, sma_signal)
+hist   = macd - signal
+
+longAlertCondition  = ta.crossover(macd, signal)
+alertcondition(longAlertCondition   , "Long : Early Warning"        , "MACD-X - Not Confirmed Probable Long Trade Opportunity\n{{exchange}}:{{ticker}}->\nPrice = {{close}},\nTime = {{time}}")
+alertcondition(longAlertCondition[1], "Long : Trading Opportunity"  , "MACD-X - Probable Long Trade Opportunity\n{{exchange}}:{{ticker}}->\nPrice = {{close}},\nTime = {{time}}")
+plotshape(macdSigCross ? longAlertCondition : na, "Long" , shape.labelup  , location.belowbar, color.new(color.green, 0), size=size.small , show_last=lookbackLength)
+
+shortAlertCondition = ta.crossunder(macd, signal)
+alertcondition(shortAlertCondition   , "Short : Early Warning"      , "MACD-X - Not Confirmed Probable Short Trade Opportunity\n{{exchange}}:{{ticker}}->\nPrice = {{close}},\nTime = {{time}}")
+alertcondition(shortAlertCondition[1], "Short : Trading Opportunity", "MACD-X - Probable Short Trade Opportunity\n{{exchange}}:{{ticker}}->\nPrice = {{close}},\nTime = {{time}}")
+plotshape(macdSigCross ? shortAlertCondition : na, "Short", shape.labeldown, location.abovebar, color.new(color.red  , 0), size=size.small , show_last=lookbackLength)
+
+var a_lines     = array.new_line()
+var a_hist      = array.new_box()
+var a_fill      = array.new_linefill()
+
+priceHighest    = ta.highest(high, lookbackLength)
+priceLowest     = ta.lowest (low , lookbackLength)
+priceChangeRate = (priceHighest - priceLowest) / priceHighest
+priceLowest    := priceLowest  * (1 - priceChangeRate * verticalAdj)
+priceHighest   := priceHighest * (1 + priceChangeRate * verticalAdj)
+oscHighest      = ta.highest(macd, lookbackLength)
+histColor       = hist >= 0 ? hist[1] < hist ? #006400 : color.green : hist[1] < hist ? color.red : #910000
+
+if barstate.islast
+    if array.size(a_lines) > 0
+        for i = 1 to array.size(a_lines)
+            line.delete(array.shift(a_lines))
+
+    if array.size(a_hist) > 0
+        for i = 1 to array.size(a_hist)
+            box.delete(array.shift(a_hist))
+
+    if array.size(a_fill) > 0
+        for i = 1 to array.size(a_fill)
+            linefill.delete(array.shift(a_fill))
+
+    hightAdj = priceChangeRate / oscHight
+
+    for barIndex = 0 to lookbackLength - 1
+        if array.size(a_lines) < 501
+            array.push(a_hist , box.new (bar_index[barIndex],      oscPlacement == 'Top' ? priceHighest : priceLowest, 
+                                         bar_index[barIndex],     (oscPlacement == 'Top' ? priceHighest : priceLowest) * (1 + hist[barIndex]       / oscHighest * hightAdj), histColor[barIndex], 2))
+            array.push(a_lines, line.new(bar_index[barIndex],     (oscPlacement == 'Top' ? priceHighest : priceLowest) * (1 + macd[barIndex]       / oscHighest * hightAdj), 
+                                         bar_index[barIndex + 1], (oscPlacement == 'Top' ? priceHighest : priceLowest) * (1 + macd[barIndex + 1]   / oscHighest * hightAdj), xloc.bar_index, extend.none, #2962FF, line.style_solid, 1))
+            array.push(a_lines, line.new(bar_index[barIndex],     (oscPlacement == 'Top' ? priceHighest : priceLowest) * (1 + signal[barIndex]     / oscHighest * hightAdj), 
+                                         bar_index[barIndex + 1], (oscPlacement == 'Top' ? priceHighest : priceLowest) * (1 + signal[barIndex + 1] / oscHighest * hightAdj), xloc.bar_index, extend.none, #FF6D00, line.style_solid, 1))
+            if highlight
+                array.push(a_fill, linefill.new(array.get(a_lines, 2 * barIndex), array.get(a_lines, 2 * barIndex + 1), macd[barIndex] > signal[barIndex] ? color.new(#2962FF, 50) : color.new(#FF6D00, 50)))
+
+var table logo = table.new(position.bottom_right, 1, 1)
+if barstate.islast
+    table.cell(logo, 0, 0, '☼☾  ', text_size=size.normal, text_color=color.teal)
+
+
+
+
+
+//////////////////////////////////////////////////////
+//////////////////////////////////////////////////////
+//////////////////////////////////////////////////////
+//////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+// ＩＮＰＵＴＳ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+length = input.int(10, "Trend Length")
+target = input.int(0, "Set Targets")
+// }
+
+
+// ＶＡＲＩＡＢＬＥＳ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+var bool trend    = na
+float trend_value = na
+
+// Colors
+color up_color = #06b690
+color dn_color = color.rgb(182, 112, 6)
+
+// ATR for calculating stop loss and target levels
+series float atr_value = ta.sma(ta.atr(200), 200) * 0.8
+
+// Moving averages for trend detection
+series float sma_high  = ta.sma(high, length) + atr_value
+series float sma_low   = ta.sma(low, length) - atr_value
+color       plot_color = color.new(chart.fg_color, 80)
+
+// UDT for managing lines and labels
+type TrendTargets
+    line[] lines
+    label[] labels
+
+// Initialize UDT
+var TrendTargets targets_up   = TrendTargets.new(array.new_line(), array.new_label())
+var TrendTargets targets_down = TrendTargets.new(array.new_line(), array.new_label())
+// }
+
+
+// ＣＡＬＣＵＬＡＴＩＯＮＳ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+  
+// Determine trend based on crossovers
+if ta.crossover(close, sma_high) and barstate.isconfirmed
+    trend := true
+if ta.crossunder(close, sma_low) and barstate.isconfirmed
+    trend := false
+
+trend_value := switch
+    trend     => sma_low
+    not trend => sma_high
+
+trend_color = trend ? up_color : not trend ? dn_color : na
+
+
+// Signal detection for trend changes
+bool signal_up   = ta.change(trend) and not trend[1]
+bool signal_down = ta.change(trend) and trend[1]
+
+
+// Method to draw trend targets and manage lines/labels
+method draw_targets(TrendTargets targets, bool signal1, bool signal2, bool direction)=>
+    float base           = direction ? sma_low : sma_high
+    float atr_multiplier = atr_value * (direction ? 1 : -1)
+
+    // Reset counters for up and down targets
+    var int count_up   = 0
+    var int count_down = 0
+
+    if trend 
+        count_down := 0
+        count_up += 1
+    if not trend 
+        count_down += 1
+        count_up := 0
+
+    int count = direction ? count_up : count_down
+
+    if signal1
+        float target_len1 = atr_multiplier * (5+target)
+        float target_len2 = atr_multiplier * (10+target*2)
+        float target_len3 = atr_multiplier * (15+target*3)
+                
+        // Clear existing lines and labels
+        for line_i in targets.lines
+            int i = targets.lines.indexof(line_i)
+            label.delete(targets.labels.get(i))
+            line.delete(line_i)
+
+        array.clear(targets.lines)
+        array.clear(targets.labels)
+
+        // Draw new lines for trend targets
+        line stop_loss_line = line.new(bar_index, base, bar_index + 20, base)
+        line entry_line     = line.new(bar_index, close, bar_index + 20, close)
+        line target1_line   = line.new(bar_index, close + target_len1, bar_index + 20, close + target_len1)
+        line target2_line   = line.new(bar_index, close + target_len2, bar_index + 20, close + target_len2)
+        line target3_line   = line.new(bar_index, close + target_len3, bar_index + 20, close + target_len3)
+
+        // Fill between stop loss and entry line
+        linefill.new(stop_loss_line, entry_line, color.new(dn_color, 95))
+        linefill.new(entry_line, target3_line, color.new(up_color, 95))
+
+        // Draw new labels for trend targets
+        label stop_loss_label = label.new(bar_index + 20, base, str.tostring(math.round(base, 2)))
+        label entry_label     = label.new(bar_index + 20, close, str.tostring(math.round(close, 2)))
+        label target1_label   = label.new(bar_index + 20, close + target_len1, "１ - " + str.tostring(math.round(close + target_len1, 2)))
+        label target2_label   = label.new(bar_index + 20, close + target_len2, "２ - " + str.tostring(math.round(close + target_len2, 2)))
+        label target3_label   = label.new(bar_index + 20, close + target_len3, "３ - " + str.tostring(math.round(close + target_len3, 2)))
+
+        // Push lines and labels to the UDT
+        targets.lines.push(stop_loss_line)
+        targets.lines.push(entry_line)
+        targets.lines.push(target1_line)
+        targets.lines.push(target2_line)
+        targets.lines.push(target3_line)
+
+        targets.labels.push(stop_loss_label)
+        targets.labels.push(entry_label)
+        targets.labels.push(target1_label)
+        targets.labels.push(target2_label)
+        targets.labels.push(target3_label)
+
+        // Update styles for labels and lines
+        for lbl in targets.labels
+            int  idx      = targets.labels.indexof(lbl)
+            line line_ref = targets.lines.get(idx)
+            lbl.set_style(label.style_label_left)
+            lbl.set_color(chart.fg_color)
+            lbl.set_textcolor(chart.bg_color)
+            line_ref.set_color(chart.fg_color)
+
+    if signal2
+        // Clear existing lines and labels
+        for line_i in targets.lines
+            int i = targets.lines.indexof(line_i)
+            label.delete(targets.labels.get(i))
+            line.delete(line_i)
+
+        array.clear(targets.lines)
+        array.clear(targets.labels)
+
+    for line_i in targets.lines
+        int   idx           = targets.lines.indexof(line_i)
+        label lbl_ref       = targets.labels.get(idx)
+        label first_label   = targets.labels.first()
+        line  entry_line    = targets.lines.get(1)
+        label entry_label   = targets.labels.get(1)
+
+        // Targets
+        if high >= line.get_y2(line_i) and low <= line.get_y2(line_i) and count > 1
+            lbl_ref.set_style(label.style_label_left)
+            lbl_ref.set_color(chart.fg_color)
+            lbl_ref.set_text("   ✔   ")
+            lbl_ref.set_textcolor(#16ac09)
+            line_i.set_style(line.style_dashed)
+            line_i.set_color(plot_color)
+
+        // Stop Loss
+        if high >= line.get_y2(targets.lines.first()) and low <= line.get_y2(targets.lines.first()) and count > 1
+            first_label.set_text("  ✖  ")
+
+        if direction ? trend : not trend
+            first_label.set_textcolor(#db1e1e)
+            line_i.set_x2(bar_index + 20)
+            targets.lines.first().set_color(#db1e1e)
+            
+            label.set_x(targets.labels.get(idx), bar_index + 20)
+
+            entry_line.set_style(line.style_solid)
+            entry_line.set_color(up_color)
+            entry_label.set_text("◉ " + str.tostring(math.round(line.get_y2(entry_line), 2)))
+            entry_label.set_textcolor(#1d80dd)
+// }
+
+// ＰＬＯＴ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// Call the draw_targets method for both upward and downward trends
+targets_down.draw_targets(signal_down, signal_up, false)
+targets_up.draw_targets(signal_up, signal_down, true)
+
+// Plot candlesticks with trend color
+plotcandle(open, high, low, close,
+           title = 'Title', 
+           color = trend_color,
+           wickcolor = trend_color, 
+           bordercolor = trend_color)
+
+// Plot trailing stops
+p1 = plot(trend ? trend_value : na, style = plot.style_linebr, color = plot_color)
+p2 = plot(not trend ? trend_value : na, style = plot.style_linebr, color = plot_color)
+p0 = plot(hl2, display = display.none, editable = false)
+fill(p1, p0, trend_value, hl2, color.new(chart.fg_color, 90), na)
+fill(p2, p0, trend_value, hl2, color.new(chart.fg_color, 90), na)
+
+// Plot signals on the chart
+float sigUp = signal_up ? low - atr_value*2 : na
+float sigDn = signal_down ? high + atr_value*2 : na
+
+plotshape(sigUp,   "", shape.triangleup, location.absolute, up_color, size = size.tiny)
+plotshape(sigUp,   "", shape.triangleup, location.absolute, color.new(up_color, 80), size = size.small)
+
+plotshape(sigDn, "", shape.triangledown, location.absolute, dn_color, size = size.tiny)
+plotshape(sigDn, "", shape.triangledown, location.absolute, color.new(dn_color, 80), size = size.small)
+
+// }
+
+
+
+
+
+
+
+
+
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+
+
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 𝙐𝙎𝙀𝙍 𝙄𝙉𝙋𝙐𝙏𝙎
+// --------------------------------------------------------------------------------------------------------------------{
+int   ftclength = input.int(100, "Trend Length")
+float multi  = input.float(3, "Channel Width", step = 0.1)
+int   extend = input.int(50, "Index of future price")
+color color_up = input.color(#16d897, "Up", inline = "Colors")
+color color_dn = input.color(#da853f, "Dn", inline = "Colors")
+
+float atr    = ta.highest(ta.atr(200), 100)
+
+// UDT ------------------------------>>
+type channel 
+    line line_mid1 = na
+    line line_mid2 = na
+    line line_top1 = na
+    line line_top2 = na
+    line line_low1 = na
+    line line_low2 = na
+
+var c = channel.new(line(na), line(na), line(na), line(na), line(na), line(na))
+
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 𝙄𝙉𝘿𝙄𝘾𝘼𝙏𝙊𝙍 𝘾𝘼𝙇𝘾𝙐𝙇𝘼𝙏𝙄𝙊𝙉𝙎
+// --------------------------------------------------------------------------------------------------------------------{
+future_price(x1,x2,y1,y2,index)=>
+    float slope = (y2-y1)/(x2-x1) 
+
+    float future_price = y1 + slope * (index - x1)
+
+    style = switch
+        y1 > y2 =>label.style_label_lower_left
+        =>label.style_label_upper_left
+
+    label.new(index, future_price, 
+                 text  = str.tostring(future_price, "Future Price: \n #.#"),
+                 color = color.new(chart.fg_color, 80),
+                 textcolor = chart.fg_color, 
+                 style     = style)
+
+ftctrend(ftclength)=>
+    var ftctrend = bool(na)
+    float sma = ta.sma(close, ftclength)
+    float upper = sma + atr
+    float lower = sma - atr
+
+    bool signal_up = ta.crossover(close, upper)
+    bool signal_dn = ta.crossunder(close, lower)
+
+    if signal_up
+        ftctrend := true
+    if signal_dn
+        ftctrend := false
+
+    ftctrend
+
+bool ftctrend = ftctrend(ftclength)
+
+remove_lines(ftctrend)=>
+    if ftctrend and not ftctrend[1]
+        c.line_mid2 := line(na)
+        c.line_top2 := line(na)
+        c.line_low2 := line(na)
+
+    if not ftctrend and ftctrend[1]
+        c.line_mid1 := line(na)
+        c.line_top1 := line(na)
+        c.line_low1 := line(na)
+
+color_lines(line_m, line_t, line_l, color, label)=>
+    var color_lines = color
+
+    if color == color_up ? line_m.get_y1() <= line_m.get_y2() : line_m.get_y1() >= line_m.get_y2()
+        color_lines := color
+        line_m.set_color(color_lines)
+        line_l.set_color(color_lines)
+        line_t.set_color(color_lines)
+
+        line_m.set_style(line.style_solid)
+        line_t.set_style(line.style_solid)
+        line_l.set_style(line.style_solid)
+        label.set_color(label, color_lines)  
+
+    if  color == color_up ? line_m.get_y1() >= line_m.get_y2() : line_m.get_y1() <= line_m.get_y2()
+        color_lines := chart.fg_color
+        line_m.set_color(color_lines)
+        line_t.set_color(color_lines)
+        line_l.set_color(color_lines)
+
+        line_m.set_style(line.style_dashed)
+        line_t.set_style(line.style_dashed)
+        line_l.set_style(line.style_dashed)
+        label.set_color(label, color.new(color_lines, 100))
+
+    label.set_size(label, size.tiny)
+
+    linefill.new(line_l, line_t, color.new(color_lines, 90))
+
+draw_channel(ftctrend)=>
+    var label_up = label(na)
+    var label_dn = label(na)
+    var label_m = label(na)
+
+    series float src = hl2
+    series float low_src = src - atr * multi
+    series float high_src = src + atr * multi
+
+    // -> New Lines
+    if ftctrend and not ftctrend[1]
+        label_up := label.new(bar_index, low_src, style = label.style_diamond)
+        c.line_mid1 := line.new(bar_index, src, bar_index, src)
+        c.line_top1 := line.new(bar_index, high_src, bar_index, high_src)
+        c.line_low1 := line.new(bar_index, low_src, bar_index, low_src)
+
+        c.line_mid2.set_xy2(bar_index, src)
+        c.line_top2.set_xy2(bar_index, high_src)
+        c.line_low2.set_xy2(bar_index, low_src)
+
+    if not ftctrend and ftctrend[1]
+        label_dn := label.new(bar_index, high_src, style = label.style_diamond)
+        c.line_mid2 := line.new(bar_index, src, bar_index+2, src)
+        c.line_top2 := line.new(bar_index, high_src, bar_index, high_src)
+        c.line_low2 := line.new(bar_index, low_src, bar_index, low_src)
+
+        c.line_mid1.set_xy2(bar_index, src)
+        c.line_top1.set_xy2(bar_index, high_src)
+        c.line_low1.set_xy2(bar_index, low_src)
+
+    // Extend
+    if ftctrend
+        label.delete(label_m)
+        c.line_mid2.set_extend(extend.none)
+        c.line_top2.set_extend(extend.none)     
+        c.line_low2.set_extend(extend.none)   
+
+        c.line_mid1.set_extend(extend.right)
+        c.line_top1.set_extend(extend.right)     
+        c.line_low1.set_extend(extend.right)   
+
+        c.line_mid1.set_xy2(bar_index, ta.sma(src, 20))
+        c.line_top1.set_xy2(bar_index, ta.sma(high_src, 20))
+        c.line_low1.set_xy2(bar_index, ta.sma(low_src, 20))
+
+        label_m := future_price(c.line_mid1.get_x1(), c.line_mid1.get_x2(), c.line_mid1.get_y1(), c.line_mid1.get_y2(), bar_index+extend)
+
+    
+
+    if not ftctrend
+        label.delete(label_m)
+        c.line_mid1.set_extend(extend.none)
+        c.line_top1.set_extend(extend.none)     
+        c.line_low1.set_extend(extend.none)   
+
+        c.line_mid2.set_extend(extend.right)
+        c.line_top2.set_extend(extend.right)     
+        c.line_low2.set_extend(extend.right)   
+
+        c.line_mid2.set_xy2(bar_index, ta.sma(src, 20))
+        c.line_top2.set_xy2(bar_index, ta.sma(high_src, 20))
+        c.line_low2.set_xy2(bar_index, ta.sma(low_src, 20))
+
+        label_m := future_price(c.line_mid2.get_x1(), c.line_mid2.get_x2(), c.line_mid2.get_y1(), c.line_mid2.get_y2(), bar_index+extend)
+
+
+    color_lines(c.line_mid1, c.line_top1, c.line_low1, color_up, label_up)
+    color_lines(c.line_mid2, c.line_top2, c.line_low2, color_dn, label_dn)
+
+    remove_lines(ftctrend)
+
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 𝙑𝙄𝙎𝙐𝘼𝙇𝙄𝙕𝘼𝙏𝙄𝙊𝙉
+// --------------------------------------------------------------------------------------------------------------------{
+draw_channel(ftctrend)
+// --------------------------------------------------------------------------------------------------------------------}

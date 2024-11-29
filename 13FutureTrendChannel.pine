@@ -7,7 +7,7 @@ indicator("Future Trend Channel [ChartPrime]", overlay = true, max_lines_count =
 // --------------------------------------------------------------------------------------------------------------------}
 // 𝙐𝙎𝙀𝙍 𝙄𝙉𝙋𝙐𝙏𝙎
 // --------------------------------------------------------------------------------------------------------------------{
-int   length = input.int(100, "Trend Length")
+int   ftclength = input.int(100, "Trend Length")
 float multi  = input.float(3, "Channel Width", step = 0.1)
 int   extend = input.int(50, "Index of future price")
 color color_up = input.color(#16d897, "Up", inline = "Colors")
@@ -45,9 +45,9 @@ future_price(x1,x2,y1,y2,index)=>
                  textcolor = chart.fg_color, 
                  style     = style)
 
-trend(length)=>
-    var trend = bool(na)
-    float sma = ta.sma(close, length)
+ftctrend(ftclength)=>
+    var ftctrend = bool(na)
+    float sma = ta.sma(close, ftclength)
     float upper = sma + atr
     float lower = sma - atr
 
@@ -55,21 +55,21 @@ trend(length)=>
     bool signal_dn = ta.crossunder(close, lower)
 
     if signal_up
-        trend := true
+        ftctrend := true
     if signal_dn
-        trend := false
+        ftctrend := false
 
-    trend
+    ftctrend
 
-bool trend = trend(length)
+bool ftctrend = ftctrend(ftclength)
 
-remove_lines(trend)=>
-    if trend and not trend[1]
+remove_lines(ftctrend)=>
+    if ftctrend and not ftctrend[1]
         c.line_mid2 := line(na)
         c.line_top2 := line(na)
         c.line_low2 := line(na)
 
-    if not trend and trend[1]
+    if not ftctrend and ftctrend[1]
         c.line_mid1 := line(na)
         c.line_top1 := line(na)
         c.line_low1 := line(na)
@@ -103,7 +103,7 @@ color_lines(line_m, line_t, line_l, color, label)=>
 
     linefill.new(line_l, line_t, color.new(color_lines, 90))
 
-draw_channel(trend)=>
+draw_channel(ftctrend)=>
     var label_up = label(na)
     var label_dn = label(na)
     var label_m = label(na)
@@ -113,7 +113,7 @@ draw_channel(trend)=>
     series float high_src = src + atr * multi
 
     // -> New Lines
-    if trend and not trend[1]
+    if ftctrend and not ftctrend[1]
         label_up := label.new(bar_index, low_src, style = label.style_diamond)
         c.line_mid1 := line.new(bar_index, src, bar_index, src)
         c.line_top1 := line.new(bar_index, high_src, bar_index, high_src)
@@ -123,7 +123,7 @@ draw_channel(trend)=>
         c.line_top2.set_xy2(bar_index, high_src)
         c.line_low2.set_xy2(bar_index, low_src)
 
-    if not trend and trend[1]
+    if not ftctrend and ftctrend[1]
         label_dn := label.new(bar_index, high_src, style = label.style_diamond)
         c.line_mid2 := line.new(bar_index, src, bar_index+2, src)
         c.line_top2 := line.new(bar_index, high_src, bar_index, high_src)
@@ -134,7 +134,7 @@ draw_channel(trend)=>
         c.line_low1.set_xy2(bar_index, low_src)
 
     // Extend
-    if trend
+    if ftctrend
         label.delete(label_m)
         c.line_mid2.set_extend(extend.none)
         c.line_top2.set_extend(extend.none)     
@@ -152,7 +152,7 @@ draw_channel(trend)=>
 
     
 
-    if not trend
+    if not ftctrend
         label.delete(label_m)
         c.line_mid1.set_extend(extend.none)
         c.line_top1.set_extend(extend.none)     
@@ -172,11 +172,11 @@ draw_channel(trend)=>
     color_lines(c.line_mid1, c.line_top1, c.line_low1, color_up, label_up)
     color_lines(c.line_mid2, c.line_top2, c.line_low2, color_dn, label_dn)
 
-    remove_lines(trend)
+    remove_lines(ftctrend)
 
 
 // --------------------------------------------------------------------------------------------------------------------}
 // 𝙑𝙄𝙎𝙐𝘼𝙇𝙄𝙕𝘼𝙏𝙄𝙊𝙉
 // --------------------------------------------------------------------------------------------------------------------{
-draw_channel(trend)
+draw_channel(ftctrend)
 // --------------------------------------------------------------------------------------------------------------------}
