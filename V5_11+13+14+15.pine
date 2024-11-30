@@ -1,0 +1,774 @@
+//@version=5
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//# * ══════════════════════════════════════════════════════════════════════════════════════════════
+//# *
+//# * Study       : MACD-X Overlay, More Than MACD
+//# * Author      : © dgtrd
+//# *
+//# * Revision History
+//# *  Release    : Mar 10, 2022 : Initial Release
+//# *
+//# * ══════════════════════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+
+
+import Trendoscope/utils/1 as ut
+import Trendoscope/ohlc/3 as o
+import Trendoscope/LineWrapper/2 as wr
+import Trendoscope/ZigzagLite/3 as zg
+import Trendoscope/abstractchartpatterns/9 as p
+import Trendoscope/basechartpatterns/8 as bp
+
+
+indicator("MACD-X Overlay, More Than MACD by DGT", "MACD-X ʙʏ DGT ☼☾", true, max_lines_count = 500, max_boxes_count = 250, max_bars_back = 500)
+
+macdType      = input.string("MACD-SOURCE", "MACD Calculation Method", options=["MACD-TRADITIONAL", "MACD-AS (HISTOGRAM)", "MACD-LEADER", "MACD-SOURCE"])
+fast_length   = input.int(12, "Fast Length", minval = 1)
+slow_length   = input.int(26, "Slow Length", minval = 1)
+source        = input(close, "Source")
+signal_length = input.int(9, "Signal Smoothing",  minval = 1, maxval = 50)
+sma_source    = input.string("EMA", "Oscillator MA Type" , options=["SMA", "EMA"])
+sma_signal    = input.string("EMA", "Signal Line MA Type", options=["SMA", "EMA"])
+macdSigCross  = input.bool(false, "Display MACD/Signal Corsses")
+highlight     = input.bool(false, "Highlight MACD/Signal Area")
+lookbackLength= input.int(200, 'Overlay Indicator Display Length', minval = 10, maxval = 250) 
+oscPlacement  = input.string('Bottom', 'Placement', options = ['Top', 'Bottom'], inline='VOL')
+oscHight      = 12 - input.int(7, 'Hight' , minval = 1, maxval = 10  , inline='VOL' )
+verticalAdj   = input.int(3, "Vertical Indicator Position", minval = 0, maxval = 10) / 10
+
+ma(s, l, m) => m == "EMA" ? ta.ema(s, l) : ta.sma(s, l)
+
+fast_ma = ma(source, fast_length, sma_source)
+slow_ma = ma(source, slow_length, sma_source)
+macd    = fast_ma - slow_ma
+
+macd := if macdType == "MACD-TRADITIONAL"
+    macd
+else if macdType == "MACD-AS (HISTOGRAM)"
+    macd - ma(macd, signal_length, sma_source)
+else if macdType == "MACD-LEADER"
+    macd + ma(source - fast_ma, fast_length, sma_source) - ma(source - slow_ma, slow_length, sma_source)
+else
+    ma(source - math.avg(fast_ma, slow_ma), signal_length, sma_source)
+
+signal = ma(macd, signal_length, sma_signal)
+hist   = macd - signal
+
+longAlertCondition  = ta.crossover(macd, signal)
+alertcondition(longAlertCondition   , "Long : Early Warning"        , "MACD-X - Not Confirmed Probable Long Trade Opportunity\n{{exchange}}:{{ticker}}->\nPrice = {{close}},\nTime = {{time}}")
+alertcondition(longAlertCondition[1], "Long : Trading Opportunity"  , "MACD-X - Probable Long Trade Opportunity\n{{exchange}}:{{ticker}}->\nPrice = {{close}},\nTime = {{time}}")
+plotshape(macdSigCross ? longAlertCondition : na, "Long" , shape.labelup  , location.belowbar, color.new(color.green, 0), size=size.small , show_last=lookbackLength)
+
+shortAlertCondition = ta.crossunder(macd, signal)
+alertcondition(shortAlertCondition   , "Short : Early Warning"      , "MACD-X - Not Confirmed Probable Short Trade Opportunity\n{{exchange}}:{{ticker}}->\nPrice = {{close}},\nTime = {{time}}")
+alertcondition(shortAlertCondition[1], "Short : Trading Opportunity", "MACD-X - Probable Short Trade Opportunity\n{{exchange}}:{{ticker}}->\nPrice = {{close}},\nTime = {{time}}")
+plotshape(macdSigCross ? shortAlertCondition : na, "Short", shape.labeldown, location.abovebar, color.new(color.red  , 0), size=size.small , show_last=lookbackLength)
+
+var a_lines     = array.new_line()
+var a_hist      = array.new_box()
+var a_fill      = array.new_linefill()
+
+priceHighest    = ta.highest(high, lookbackLength)
+priceLowest     = ta.lowest (low , lookbackLength)
+priceChangeRate = (priceHighest - priceLowest) / priceHighest
+priceLowest    := priceLowest  * (1 - priceChangeRate * verticalAdj)
+priceHighest   := priceHighest * (1 + priceChangeRate * verticalAdj)
+oscHighest      = ta.highest(macd, lookbackLength)
+histColor       = hist >= 0 ? hist[1] < hist ? #006400 : color.green : hist[1] < hist ? color.red : #910000
+
+if barstate.islast
+    if array.size(a_lines) > 0
+        for i = 1 to array.size(a_lines)
+            line.delete(array.shift(a_lines))
+
+    if array.size(a_hist) > 0
+        for i = 1 to array.size(a_hist)
+            box.delete(array.shift(a_hist))
+
+    if array.size(a_fill) > 0
+        for i = 1 to array.size(a_fill)
+            linefill.delete(array.shift(a_fill))
+
+    hightAdj = priceChangeRate / oscHight
+
+    for barIndex = 0 to lookbackLength - 1
+        if array.size(a_lines) < 501
+            array.push(a_hist , box.new (bar_index[barIndex],      oscPlacement == 'Top' ? priceHighest : priceLowest, 
+                                         bar_index[barIndex],     (oscPlacement == 'Top' ? priceHighest : priceLowest) * (1 + hist[barIndex]       / oscHighest * hightAdj), histColor[barIndex], 2))
+            array.push(a_lines, line.new(bar_index[barIndex],     (oscPlacement == 'Top' ? priceHighest : priceLowest) * (1 + macd[barIndex]       / oscHighest * hightAdj), 
+                                         bar_index[barIndex + 1], (oscPlacement == 'Top' ? priceHighest : priceLowest) * (1 + macd[barIndex + 1]   / oscHighest * hightAdj), xloc.bar_index, extend.none, #2962FF, line.style_solid, 1))
+            array.push(a_lines, line.new(bar_index[barIndex],     (oscPlacement == 'Top' ? priceHighest : priceLowest) * (1 + signal[barIndex]     / oscHighest * hightAdj), 
+                                         bar_index[barIndex + 1], (oscPlacement == 'Top' ? priceHighest : priceLowest) * (1 + signal[barIndex + 1] / oscHighest * hightAdj), xloc.bar_index, extend.none, #FF6D00, line.style_solid, 1))
+            if highlight
+                array.push(a_fill, linefill.new(array.get(a_lines, 2 * barIndex), array.get(a_lines, 2 * barIndex + 1), macd[barIndex] > signal[barIndex] ? color.new(#2962FF, 50) : color.new(#FF6D00, 50)))
+
+var table logo = table.new(position.bottom_right, 1, 1)
+if barstate.islast
+    table.cell(logo, 0, 0, '☼☾  ', text_size=size.normal, text_color=color.teal)
+
+
+
+
+
+//////////////////////////////////////////////////////
+//////////////////////////////////////////////////////
+//////////////////////////////////////////////////////
+//////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+// ＩＮＰＵＴＳ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+length = input.int(10, "Trend Length")
+target = input.int(0, "Set Targets")
+// }
+
+
+// ＶＡＲＩＡＢＬＥＳ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+var bool trend    = na
+float trend_value = na
+
+// Colors
+color up_color = #06b690
+color dn_color = color.rgb(182, 112, 6)
+
+// ATR for calculating stop loss and target levels
+series float atr_value = ta.sma(ta.atr(200), 200) * 0.8
+
+// Moving averages for trend detection
+series float sma_high  = ta.sma(high, length) + atr_value
+series float sma_low   = ta.sma(low, length) - atr_value
+color       plot_color = color.new(chart.fg_color, 80)
+
+// UDT for managing lines and labels
+type TrendTargets
+    line[] lines
+    label[] labels
+
+// Initialize UDT
+var TrendTargets targets_up   = TrendTargets.new(array.new_line(), array.new_label())
+var TrendTargets targets_down = TrendTargets.new(array.new_line(), array.new_label())
+// }
+
+
+// ＣＡＬＣＵＬＡＴＩＯＮＳ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+  
+// Determine trend based on crossovers
+if ta.crossover(close, sma_high) and barstate.isconfirmed
+    trend := true
+if ta.crossunder(close, sma_low) and barstate.isconfirmed
+    trend := false
+
+trend_value := switch
+    trend     => sma_low
+    not trend => sma_high
+
+trend_color = trend ? up_color : not trend ? dn_color : na
+
+
+// Signal detection for trend changes
+bool signal_up   = ta.change(trend) and not trend[1]
+bool signal_down = ta.change(trend) and trend[1]
+
+
+// Method to draw trend targets and manage lines/labels
+method draw_targets(TrendTargets targets, bool signal1, bool signal2, bool direction)=>
+    float base           = direction ? sma_low : sma_high
+    float atr_multiplier = atr_value * (direction ? 1 : -1)
+
+    // Reset counters for up and down targets
+    var int count_up   = 0
+    var int count_down = 0
+
+    if trend 
+        count_down := 0
+        count_up += 1
+    if not trend 
+        count_down += 1
+        count_up := 0
+
+    int count = direction ? count_up : count_down
+
+    if signal1
+        float target_len1 = atr_multiplier * (5+target)
+        float target_len2 = atr_multiplier * (10+target*2)
+        float target_len3 = atr_multiplier * (15+target*3)
+                
+        // Clear existing lines and labels
+        for line_i in targets.lines
+            int i = targets.lines.indexof(line_i)
+            label.delete(targets.labels.get(i))
+            line.delete(line_i)
+
+        array.clear(targets.lines)
+        array.clear(targets.labels)
+
+        // Draw new lines for trend targets
+        line stop_loss_line = line.new(bar_index, base, bar_index + 20, base)
+        line entry_line     = line.new(bar_index, close, bar_index + 20, close)
+        line target1_line   = line.new(bar_index, close + target_len1, bar_index + 20, close + target_len1)
+        line target2_line   = line.new(bar_index, close + target_len2, bar_index + 20, close + target_len2)
+        line target3_line   = line.new(bar_index, close + target_len3, bar_index + 20, close + target_len3)
+
+        // Fill between stop loss and entry line
+        linefill.new(stop_loss_line, entry_line, color.new(dn_color, 95))
+        linefill.new(entry_line, target3_line, color.new(up_color, 95))
+
+        // Draw new labels for trend targets
+        label stop_loss_label = label.new(bar_index + 20, base, str.tostring(math.round(base, 2)))
+        label entry_label     = label.new(bar_index + 20, close, str.tostring(math.round(close, 2)))
+        label target1_label   = label.new(bar_index + 20, close + target_len1, "１ - " + str.tostring(math.round(close + target_len1, 2)))
+        label target2_label   = label.new(bar_index + 20, close + target_len2, "２ - " + str.tostring(math.round(close + target_len2, 2)))
+        label target3_label   = label.new(bar_index + 20, close + target_len3, "３ - " + str.tostring(math.round(close + target_len3, 2)))
+
+        // Push lines and labels to the UDT
+        targets.lines.push(stop_loss_line)
+        targets.lines.push(entry_line)
+        targets.lines.push(target1_line)
+        targets.lines.push(target2_line)
+        targets.lines.push(target3_line)
+
+        targets.labels.push(stop_loss_label)
+        targets.labels.push(entry_label)
+        targets.labels.push(target1_label)
+        targets.labels.push(target2_label)
+        targets.labels.push(target3_label)
+
+        // Update styles for labels and lines
+        for lbl in targets.labels
+            int  idx      = targets.labels.indexof(lbl)
+            line line_ref = targets.lines.get(idx)
+            lbl.set_style(label.style_label_left)
+            lbl.set_color(chart.fg_color)
+            lbl.set_textcolor(chart.bg_color)
+            line_ref.set_color(chart.fg_color)
+
+    if signal2
+        // Clear existing lines and labels
+        for line_i in targets.lines
+            int i = targets.lines.indexof(line_i)
+            label.delete(targets.labels.get(i))
+            line.delete(line_i)
+
+        array.clear(targets.lines)
+        array.clear(targets.labels)
+
+    for line_i in targets.lines
+        int   idx           = targets.lines.indexof(line_i)
+        label lbl_ref       = targets.labels.get(idx)
+        label first_label   = targets.labels.first()
+        line  entry_line    = targets.lines.get(1)
+        label entry_label   = targets.labels.get(1)
+
+        // Targets
+        if high >= line.get_y2(line_i) and low <= line.get_y2(line_i) and count > 1
+            lbl_ref.set_style(label.style_label_left)
+            lbl_ref.set_color(chart.fg_color)
+            lbl_ref.set_text("   ✔   ")
+            lbl_ref.set_textcolor(#16ac09)
+            line_i.set_style(line.style_dashed)
+            line_i.set_color(plot_color)
+
+        // Stop Loss
+        if high >= line.get_y2(targets.lines.first()) and low <= line.get_y2(targets.lines.first()) and count > 1
+            first_label.set_text("  ✖  ")
+
+        if direction ? trend : not trend
+            first_label.set_textcolor(#db1e1e)
+            line_i.set_x2(bar_index + 20)
+            targets.lines.first().set_color(#db1e1e)
+            
+            label.set_x(targets.labels.get(idx), bar_index + 20)
+
+            entry_line.set_style(line.style_solid)
+            entry_line.set_color(up_color)
+            entry_label.set_text("◉ " + str.tostring(math.round(line.get_y2(entry_line), 2)))
+            entry_label.set_textcolor(#1d80dd)
+// }
+
+// ＰＬＯＴ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// Call the draw_targets method for both upward and downward trends
+targets_down.draw_targets(signal_down, signal_up, false)
+targets_up.draw_targets(signal_up, signal_down, true)
+
+// Plot candlesticks with trend color
+plotcandle(open, high, low, close,
+           title = 'Title', 
+           color = trend_color,
+           wickcolor = trend_color, 
+           bordercolor = trend_color)
+
+// Plot trailing stops
+p1 = plot(trend ? trend_value : na, style = plot.style_linebr, color = plot_color)
+p2 = plot(not trend ? trend_value : na, style = plot.style_linebr, color = plot_color)
+p0 = plot(hl2, display = display.none, editable = false)
+fill(p1, p0, trend_value, hl2, color.new(chart.fg_color, 90), na)
+fill(p2, p0, trend_value, hl2, color.new(chart.fg_color, 90), na)
+
+// Plot signals on the chart
+float sigUp = signal_up ? low - atr_value*2 : na
+float sigDn = signal_down ? high + atr_value*2 : na
+
+plotshape(sigUp,   "", shape.triangleup, location.absolute, up_color, size = size.tiny)
+plotshape(sigUp,   "", shape.triangleup, location.absolute, color.new(up_color, 80), size = size.small)
+
+plotshape(sigDn, "", shape.triangledown, location.absolute, dn_color, size = size.tiny)
+plotshape(sigDn, "", shape.triangledown, location.absolute, color.new(dn_color, 80), size = size.small)
+
+// }
+
+
+
+
+
+
+
+
+
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+
+
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 𝙐𝙎𝙀𝙍 𝙄𝙉𝙋𝙐𝙏𝙎
+// --------------------------------------------------------------------------------------------------------------------{
+int   ftclength = input.int(100, "Trend Length")
+float multi  = input.float(3, "Channel Width", step = 0.1)
+int   extend = input.int(50, "Index of future price")
+color color_up = input.color(#16d897, "Up", inline = "Colors")
+color color_dn = input.color(#da853f, "Dn", inline = "Colors")
+
+float atr    = ta.highest(ta.atr(200), 100)
+
+// UDT ------------------------------>>
+type channel 
+    line line_mid1 = na
+    line line_mid2 = na
+    line line_top1 = na
+    line line_top2 = na
+    line line_low1 = na
+    line line_low2 = na
+
+var c = channel.new(line(na), line(na), line(na), line(na), line(na), line(na))
+
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 𝙄𝙉𝘿𝙄𝘾𝘼𝙏𝙊𝙍 𝘾𝘼𝙇𝘾𝙐𝙇𝘼𝙏𝙄𝙊𝙉𝙎
+// --------------------------------------------------------------------------------------------------------------------{
+future_price(x1,x2,y1,y2,index)=>
+    float slope = (y2-y1)/(x2-x1) 
+
+    float future_price = y1 + slope * (index - x1)
+
+    style = switch
+        y1 > y2 =>label.style_label_lower_left
+        =>label.style_label_upper_left
+
+    label.new(index, future_price, 
+                 text  = str.tostring(future_price, "Future Price: \n #.#"),
+                 color = color.new(chart.fg_color, 80),
+                 textcolor = chart.fg_color, 
+                 style     = style)
+
+ftctrend(ftclength)=>
+    var ftctrend = bool(na)
+    float sma = ta.sma(close, ftclength)
+    float upper = sma + atr
+    float lower = sma - atr
+
+    bool signal_up = ta.crossover(close, upper)
+    bool signal_dn = ta.crossunder(close, lower)
+
+    if signal_up
+        ftctrend := true
+    if signal_dn
+        ftctrend := false
+
+    ftctrend
+
+bool ftctrend = ftctrend(ftclength)
+
+remove_lines(ftctrend)=>
+    if ftctrend and not ftctrend[1]
+        c.line_mid2 := line(na)
+        c.line_top2 := line(na)
+        c.line_low2 := line(na)
+
+    if not ftctrend and ftctrend[1]
+        c.line_mid1 := line(na)
+        c.line_top1 := line(na)
+        c.line_low1 := line(na)
+
+color_lines(line_m, line_t, line_l, color, label)=>
+    var color_lines = color
+
+    if color == color_up ? line_m.get_y1() <= line_m.get_y2() : line_m.get_y1() >= line_m.get_y2()
+        color_lines := color
+        line_m.set_color(color_lines)
+        line_l.set_color(color_lines)
+        line_t.set_color(color_lines)
+
+        line_m.set_style(line.style_solid)
+        line_t.set_style(line.style_solid)
+        line_l.set_style(line.style_solid)
+        label.set_color(label, color_lines)  
+
+    if  color == color_up ? line_m.get_y1() >= line_m.get_y2() : line_m.get_y1() <= line_m.get_y2()
+        color_lines := chart.fg_color
+        line_m.set_color(color_lines)
+        line_t.set_color(color_lines)
+        line_l.set_color(color_lines)
+
+        line_m.set_style(line.style_dashed)
+        line_t.set_style(line.style_dashed)
+        line_l.set_style(line.style_dashed)
+        label.set_color(label, color.new(color_lines, 100))
+
+    label.set_size(label, size.tiny)
+
+    linefill.new(line_l, line_t, color.new(color_lines, 90))
+
+draw_channel(ftctrend)=>
+    var label_up = label(na)
+    var label_dn = label(na)
+    var label_m = label(na)
+
+    series float src = hl2
+    series float low_src = src - atr * multi
+    series float high_src = src + atr * multi
+
+    // -> New Lines
+    if ftctrend and not ftctrend[1]
+        label_up := label.new(bar_index, low_src, style = label.style_diamond)
+        c.line_mid1 := line.new(bar_index, src, bar_index, src)
+        c.line_top1 := line.new(bar_index, high_src, bar_index, high_src)
+        c.line_low1 := line.new(bar_index, low_src, bar_index, low_src)
+
+        c.line_mid2.set_xy2(bar_index, src)
+        c.line_top2.set_xy2(bar_index, high_src)
+        c.line_low2.set_xy2(bar_index, low_src)
+
+    if not ftctrend and ftctrend[1]
+        label_dn := label.new(bar_index, high_src, style = label.style_diamond)
+        c.line_mid2 := line.new(bar_index, src, bar_index+2, src)
+        c.line_top2 := line.new(bar_index, high_src, bar_index, high_src)
+        c.line_low2 := line.new(bar_index, low_src, bar_index, low_src)
+
+        c.line_mid1.set_xy2(bar_index, src)
+        c.line_top1.set_xy2(bar_index, high_src)
+        c.line_low1.set_xy2(bar_index, low_src)
+
+    // Extend
+    if ftctrend
+        label.delete(label_m)
+        c.line_mid2.set_extend(extend.none)
+        c.line_top2.set_extend(extend.none)     
+        c.line_low2.set_extend(extend.none)   
+
+        c.line_mid1.set_extend(extend.right)
+        c.line_top1.set_extend(extend.right)     
+        c.line_low1.set_extend(extend.right)   
+
+        c.line_mid1.set_xy2(bar_index, ta.sma(src, 20))
+        c.line_top1.set_xy2(bar_index, ta.sma(high_src, 20))
+        c.line_low1.set_xy2(bar_index, ta.sma(low_src, 20))
+
+        label_m := future_price(c.line_mid1.get_x1(), c.line_mid1.get_x2(), c.line_mid1.get_y1(), c.line_mid1.get_y2(), bar_index+extend)
+
+    
+
+    if not ftctrend
+        label.delete(label_m)
+        c.line_mid1.set_extend(extend.none)
+        c.line_top1.set_extend(extend.none)     
+        c.line_low1.set_extend(extend.none)   
+
+        c.line_mid2.set_extend(extend.right)
+        c.line_top2.set_extend(extend.right)     
+        c.line_low2.set_extend(extend.right)   
+
+        c.line_mid2.set_xy2(bar_index, ta.sma(src, 20))
+        c.line_top2.set_xy2(bar_index, ta.sma(high_src, 20))
+        c.line_low2.set_xy2(bar_index, ta.sma(low_src, 20))
+
+        label_m := future_price(c.line_mid2.get_x1(), c.line_mid2.get_x2(), c.line_mid2.get_y1(), c.line_mid2.get_y2(), bar_index+extend)
+
+
+    color_lines(c.line_mid1, c.line_top1, c.line_low1, color_up, label_up)
+    color_lines(c.line_mid2, c.line_top2, c.line_low2, color_dn, label_dn)
+
+    remove_lines(ftctrend)
+
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 𝙑𝙄𝙎𝙐𝘼𝙇𝙄𝙕𝘼𝙏𝙄𝙊𝙉
+// --------------------------------------------------------------------------------------------------------------------{
+draw_channel(ftctrend)
+// --------------------------------------------------------------------------------------------------------------------}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/////////////////////////////////////////////////////////////////15
+
+
+
+
+
+openSource = input.source(open, '', inline='cs', group='Source', display = display.none)
+highSource = input.source(high, '', inline='cs', group='Source', display = display.none)
+lowSource = input.source(low, '', inline='cs', group='Source', display = display.none)
+closeSource = input.source(close, '', inline='cs', group='Source', display = display.none, tooltip = 'Source on which the zigzag and pattern calculation is done')
+
+useZigzag1 = input.bool(true, '', group = 'Zigzag', inline='z1', display = display.none)
+zigzagLength1 = input.int(8, step=5, minval=1, title='', group='Zigzag', inline='z1', display=display.none)
+depth1 = input.int(55, "", step=25, maxval=500, group='Zigzag', inline='z1', display=display.none, tooltip = 'Enable and set Length and Dept of Zigzag 1')
+
+useZigzag2 = input.bool(false, '', group = 'Zigzag', inline='z2', display = display.none)
+zigzagLength2 = input.int(13, step=5, minval=1, title='', group='Zigzag', inline='z2', display=display.none)
+depth2 = input.int(34, "", step=25, maxval=500, group='Zigzag', inline='z2', display=display.none, tooltip = 'Enable and set Length and Dept of Zigzag 2')
+
+useZigzag3 = input.bool(false, '', group = 'Zigzag', inline='z3', display = display.none)
+zigzagLength3 = input.int(21, step=5, minval=1, title='', group='Zigzag', inline='z3', display=display.none)
+depth3 = input.int(21, "", step=25, maxval=500, group='Zigzag', inline='z3', display=display.none, tooltip = 'Enable and set Length and Dept of Zigzag 3')
+
+useZigzag4 = input.bool(false, '', group = 'Zigzag', inline='z4', display = display.none)
+zigzagLength4 = input.int(34, step=5, minval=1, title='', group='Zigzag', inline='z4', display=display.none)
+depth4 = input.int(13, "", step=25, maxval=500, group='Zigzag', inline='z4', display=display.none, tooltip = 'Enable and set Length and Dept of Zigzag 4')
+
+numberOfPivots = input.int(5, "Number of Pivots", [5, 6], 'Number of pivots used for pattern identification.', group='Scanning', display = display.none)
+errorThresold = input.float(20.0, 'Error Threshold', 0.0, 100, 5, 'Error Threshold for trend line validation', group='Scanning', display = display.none)
+flatThreshold = input.float(20.0, 'Flat Threshold', 0.0, 30, 5, 'Ratio threshold to identify the slope of trend lines', group='Scanning', display = display.none)
+lastPivotDirection = input.string('both', 'Last Pivot Direction', ['up', 'down', 'both', 'custom'], 'Filter pattern based on the last pivot direction. '+
+                             'This option is useful while backtesting individual patterns. When custom is selected, then the individual pattern last pivot direction setting is used',
+                             group='Scanning', display=display.none)
+checkBarRatio = input.bool(true, 'Verify Bar Ratio ', 'Along with checking the price, also verify if the bars are proportionately placed.', group='Scanning', inline = 'br', display = display.none)
+barRatioLimit = input.float(0.382, '', group='Scanning', display = display.none, inline='br')
+avoidOverlap = input.bool(true, 'Avoid Overlap',  group='Scanning', inline='a', display = display.none)
+repaint = input.bool(false, 'Repaint', 'Avoid Overlap - Will not consider the pattern if it starts before the end of an existing pattern\n\n'+
+                     'Repaint - Uses real time bars to search for patterns. If unselected, then only use confirmed bars.', 
+                     group='Scanning', inline='a', display = display.none)
+
+allowChannels = input.bool(true, 'Channels', group='Pattern Groups - Geometric Shapes', display = display.none, inline='g')
+allowWedges = input.bool(true, 'Wedge', group='Pattern Groups - Geometric Shapes', display = display.none, inline='g')
+allowTriangles = input.bool(true, 'Triangle', group='Pattern Groups - Geometric Shapes', display = display.none, inline='g',
+         tooltip = 'Channels - Trend Lines are parralel to each other creating equidistance price channels'+
+                     '\n\t- Ascending Channel\n\t- Descending Channel\n\t- Ranging Channel'+
+                     '\n\nWedges - Trend lines are either converging or diverging from each other and both the trend lines are moving in the same direction'+
+                     '\n\t- Rising Wedge (Expanding)\n\t- Rising Wedge (Contracting)\n\t- Falling Wedge (Expanding)\n\t- Falling Wedge (Contracting)'+
+                     '\n\nTriangles - Trend lines are either converging or diverging from each other and both trend lines are moving in different directions'+
+                     '\n\t- Converging Triangle\n\t- Diverging Triangle\n\t- Ascending Triangle (Contracting)\n\t- Ascending Triangle (Expanding)\n\t- Descending Triangle(Contracting)\n\t- Descending Triangle(Expanding)')
+
+allowRisingPatterns = input.bool(true, 'Rising', group='Pattern Groups - Direction', display = display.none, inline = 'd')
+allowFallingPatterns = input.bool(true, 'Falling', group='Pattern Groups - Direction', display = display.none, inline = 'd')
+allowNonDirectionalPatterns = input.bool(true, 'Flat/Bi-Directional', group='Pattern Groups - Direction', display = display.none, inline = 'd',
+         tooltip = 'Rising - Either both trend lines are moving up or one trend line is flat and the other one is moving up.'+
+                     '\n\t- Ascending Channel\n\t- Rising Wedge (Expanding)\n\t- Rising Wedge (Contracting)\n\t- Ascending Triangle (Expanding)\n\t- Ascending Triangle (Contracting)'+
+                     '\n\nFalling - Either both trend lines are moving down or one trend line is flat and the other one is moving down.'+
+                     '\n\t- Descending Channel\n\t- Falling Wedge (Expanding)\n\t- Falling Wedge (Contracting)\n\t- Descending Triangle (Expanding)\n\t- Descending Triangle (Contracting)'+
+                     '\n\nFlat/Bi-Directional - Trend Lines move in different directions or both flat.'+
+                     '\n\t- Ranging Channel\n\t- Converging Triangle\n\t- Diverging Triangle')
+
+allowExpandingPatterns = input.bool(true, 'Expanding', group='Pattern Groups - Formation Dynamics', display = display.none, inline = 'f')
+allowContractingPatterns = input.bool(true, 'Contracting', group='Pattern Groups - Formation Dynamics', display = display.none, inline='f')
+allowParallelChannels = input.bool(true, 'Parallel', group = 'Pattern Groups - Formation Dynamics', display = display.none, inline = 'f',
+         tooltip = 'Expanding - Trend Lines are diverging from each other.'+
+                     '\n\t- Rising Wedge (Expanding)\n\t- Falling Wedge (Expanding)\n\t- Ascending Triangle (Expanding)\n\t- Descending Triangle (Expanding)\n\t- Diverging Triangle'+
+                     '\n\nContracting - Trend Lines are converging towards each other.'+
+                     '\n\t- Rising Wedge (Contracting)\n\t- Falling Wedge (Contracting)\n\t- Ascending Triangle (Contracting)\n\t- Descending Triangle (Contracting)\n\t- Converging Triangle'+
+                     '\n\nParallel - Trend Lines are almost parallel to each other.'+
+                     '\n\t- Ascending Channel\n\t- Descending Channel\n\t- Ranging Channel')
+
+allowUptrendChannel = input.bool(true, 'Ascending  ', group = 'Price Channels', inline='uc', display = display.none)
+upTrendChannelLastPivotDirection = input.string('both', '', ['up', 'down', 'both'], inline='uc', group='Price Channels', display = display.none,
+             tooltip='Enable Ascending Channel and select the last pivot direction filter. Last pivot direction will only be used if the Generic Last Pivot Direction parameter is set to Custom')
+
+allowDowntrendChannel = input.bool(true, 'Descending', group = 'Price Channels', inline='dc', display = display.none)
+downTrendChannelLastPivotDirection = input.string('both', '', ['up', 'down', 'both'], inline='dc', group='Price Channels', display = display.none,
+             tooltip='Enable Descending Channel and select the last pivot direction filter. Last pivot direction will only be used if the Generic Last Pivot Direction parameter is set to Custom')
+
+allowRangingChannel = input.bool(true, 'Ranging   ', group = 'Price Channels', inline='rc', display = display.none)
+rangingChannelLastPivotDirection = input.string('both', '', ['up', 'down', 'both'], inline='rc', group='Price Channels', display = display.none,
+             tooltip='Enable Ranging Channel and select the last pivot direction filter. Last pivot direction will only be used if the Generic Last Pivot Direction parameter is set to Custom')
+
+allowRisingWedgeExpanding = input.bool(true, 'Rising    ', inline='rwe', group = 'Expanding Wedges', display = display.none)
+risingWedgeExpandingLastPivotDirection = input.string('down', '', ['up', 'down', 'both'], inline='rwe', group='Expanding Wedges', display = display.none,
+             tooltip='Enable Rising Wedge (Expanding) and select the last pivot direction filter. Last pivot direction will only be used if the Generic Last Pivot Direction parameter is set to Custom')
+
+allowFallingWedgeExpanding = input.bool(true, 'Falling   ', inline='fwe', group = 'Expanding Wedges', display = display.none)
+fallingWedgeExpandingLastPivotDirection = input.string('up', '', ['up', 'down', 'both'], inline='fwe', group='Expanding Wedges', display = display.none,
+             tooltip='Enable Falling Wedge (Expanding) and select the last pivot direction filter. Last pivot direction will only be used if the Generic Last Pivot Direction parameter is set to Custom')
+
+allowRisingWedgeContracting = input.bool(true, 'Rising    ', inline='rwc', group = 'Contracting Wedges', display = display.none)
+risingWedgeContractingLastPivotDirection = input.string('down', '', ['up', 'down', 'both'], inline='rwc', group='Contracting Wedges', display = display.none,
+             tooltip='Enable Rising Wedge (Contracting) and select the last pivot direction filter. Last pivot direction will only be used if the Generic Last Pivot Direction parameter is set to Custom')
+
+allowFallingWedgeContracting = input.bool(true, 'Falling   ', inline='fwc', group = 'Contracting Wedges', display = display.none)
+fallingWedgeContractingLastPivotDirection = input.string('up', '', ['up', 'down', 'both'], inline='fwc', group='Contracting Wedges', display = display.none,
+             tooltip='Enable Falling Wedge (Contracting) and select the last pivot direction filter. Last pivot direction will only be used if the Generic Last Pivot Direction parameter is set to Custom')
+
+allowRisingTriangleExpanding = input.bool(true, 'Ascending  ', inline='rte', group = 'Expanding Triangles', display = display.none)
+risingTriangleExpandingLastPivotDirection = input.string('up', '', ['up', 'down', 'both'], inline='rte', group='Expanding Triangles', display = display.none,
+             tooltip='Enable Ascending Triangle (Expanding) and select the last pivot direction filter. Last pivot direction will only be used if the Generic Last Pivot Direction parameter is set to Custom')
+
+allowFallingTriangleExpanding = input.bool(true, 'Descending', inline='fte', group = 'Expanding Triangles', display = display.none)
+fallingTriangleExpandingLastPivotDirection = input.string('down', '', ['up', 'down', 'both'], inline='fte', group='Expanding Triangles', display = display.none,
+             tooltip='Enable Descending Triangle (Expanding) and select the last pivot direction filter. Last pivot direction will only be used if the Generic Last Pivot Direction parameter is set to Custom')
+
+allowExpandingTriangle = input.bool(true, 'Diverging ', inline='dt', group = 'Expanding Triangles', display = display.none)
+divergineTriangleLastPivotDirection = input.string('both', '', ['up', 'down', 'both'], inline='dt', group='Expanding Triangles', display = display.none,
+             tooltip='Enable Diverging Triangle and select the last pivot direction filter. Last pivot direction will only be used if the Generic Last Pivot Direction parameter is set to Custom')
+
+
+allowRisingTriangleConverging= input.bool(true, 'Ascending  ', inline='rtc', group = 'Contracting Triangles', display = display.none)
+risingTriangleContractingLastPivotDirection = input.string('up', '', ['up', 'down', 'both'], inline='rtc', group='Contracting Triangles', display = display.none,
+             tooltip='Enable Ascending Triangle (Contracting) and select the last pivot direction filter. Last pivot direction will only be used if the Generic Last Pivot Direction parameter is set to Custom')
+
+allowFallingTriangleConverging = input.bool(true, 'Descending', inline='ftc', group = 'Contracting Triangles', display = display.none)
+fallingTriangleContractingLastPivotDirection = input.string('down', '', ['up', 'down', 'both'], inline='ftc', group='Contracting Triangles', display = display.none,
+             tooltip='Enable Descending Triangle (Contracting) and select the last pivot direction filter. Last pivot direction will only be used if the Generic Last Pivot Direction parameter is set to Custom')
+
+allowConvergingTriangle = input.bool(true, 'Converging ', inline='ct', group = 'Contracting Triangles', display = display.none)
+convergingTriangleLastPivotDirection = input.string('both', '', ['up', 'down', 'both'], inline='ct', group='Contracting Triangles', display = display.none,
+             tooltip='Enable Converging Triangle and select the last pivot direction filter. Last pivot direction will only be used if the Generic Last Pivot Direction parameter is set to Custom')
+
+allowedPatterns = array.from(
+     false,
+     allowUptrendChannel and allowRisingPatterns and allowParallelChannels and allowChannels,
+     allowDowntrendChannel and allowFallingPatterns and allowParallelChannels and allowChannels,
+     allowRangingChannel and allowNonDirectionalPatterns and allowParallelChannels and allowChannels,
+     allowRisingWedgeExpanding and allowRisingPatterns and allowExpandingPatterns and allowWedges,
+     allowFallingWedgeExpanding and allowFallingPatterns and allowExpandingPatterns and allowWedges,
+     allowExpandingTriangle and allowNonDirectionalPatterns and allowExpandingPatterns and allowTriangles,
+     allowRisingTriangleExpanding and allowRisingPatterns and allowExpandingPatterns and allowTriangles,
+     allowFallingTriangleExpanding and allowFallingPatterns and allowExpandingPatterns and allowTriangles,
+     allowRisingWedgeContracting and allowRisingPatterns and allowContractingPatterns and allowWedges,
+     allowFallingWedgeContracting and allowFallingPatterns and allowContractingPatterns and allowWedges,
+     allowConvergingTriangle and allowNonDirectionalPatterns and allowContractingPatterns and allowTriangles,
+     allowFallingTriangleConverging and allowFallingPatterns and allowContractingPatterns and allowTriangles,
+     allowRisingTriangleConverging and allowRisingPatterns and allowContractingPatterns and allowTriangles
+     )
+
+getLastPivotDirectionInt(lastPivotDirection)=>lastPivotDirection == 'up'? 1 : lastPivotDirection == 'down'? -1 : 0
+allowedLastPivotDirections = array.from( 
+     0,
+     lastPivotDirection == 'custom'? getLastPivotDirectionInt(upTrendChannelLastPivotDirection) : getLastPivotDirectionInt(lastPivotDirection),
+     lastPivotDirection == 'custom'? getLastPivotDirectionInt(downTrendChannelLastPivotDirection) : getLastPivotDirectionInt(lastPivotDirection),
+     lastPivotDirection == 'custom'? getLastPivotDirectionInt(rangingChannelLastPivotDirection) : getLastPivotDirectionInt(lastPivotDirection),
+     lastPivotDirection == 'custom'? getLastPivotDirectionInt(risingWedgeExpandingLastPivotDirection) : getLastPivotDirectionInt(lastPivotDirection),
+     lastPivotDirection == 'custom'? getLastPivotDirectionInt(fallingWedgeExpandingLastPivotDirection) : getLastPivotDirectionInt(lastPivotDirection),
+     lastPivotDirection == 'custom'? getLastPivotDirectionInt(divergineTriangleLastPivotDirection) : getLastPivotDirectionInt(lastPivotDirection),
+     lastPivotDirection == 'custom'? getLastPivotDirectionInt(risingTriangleExpandingLastPivotDirection) : getLastPivotDirectionInt(lastPivotDirection),
+     lastPivotDirection == 'custom'? getLastPivotDirectionInt(fallingTriangleExpandingLastPivotDirection) : getLastPivotDirectionInt(lastPivotDirection),
+     lastPivotDirection == 'custom'? getLastPivotDirectionInt(risingWedgeContractingLastPivotDirection) : getLastPivotDirectionInt(lastPivotDirection),
+     lastPivotDirection == 'custom'? getLastPivotDirectionInt(fallingWedgeContractingLastPivotDirection) : getLastPivotDirectionInt(lastPivotDirection),
+     lastPivotDirection == 'custom'? getLastPivotDirectionInt(convergingTriangleLastPivotDirection) : getLastPivotDirectionInt(lastPivotDirection),
+     lastPivotDirection == 'custom'? getLastPivotDirectionInt(fallingTriangleContractingLastPivotDirection) : getLastPivotDirectionInt(lastPivotDirection),
+     lastPivotDirection == 'custom'? getLastPivotDirectionInt(risingTriangleContractingLastPivotDirection) : getLastPivotDirectionInt(lastPivotDirection)
+     )
+
+theme = input.enum(ut.Theme.DARK, title='Theme', group='Display', inline='pc',
+         tooltip='Chart theme settings. Line and label colors are generted based on the theme settings. If dark theme is selected, '+
+         'lighter colors are used and if light theme is selected, darker colors are used.\n\n'+
+         'Pattern Line width - to be used for drawing pattern lines', display=display.none)
+patternLineWidth = input.int(2, '', minval=1, inline='pc', group = 'Display', display = display.none)
+
+showPatternLabel = input.bool(true, 'Pattern Label', inline='pl1', group = 'Display', display = display.none)
+patternLabelSize = input.string(size.normal, '', [size.tiny, size.small, size.normal, size.large, size.huge], inline='pl1', group = 'Display', display = display.none,
+                     tooltip = 'Option to display Pattern Label and select the size')
+
+showPivotLabels = input.bool(true, 'Pivot Labels ', inline='pl2', group = 'Display', display = display.none, tooltip = 'Option to display pivot labels and select the size')
+pivotLabelSize = input.string(size.normal, '', [size.tiny, size.small, size.normal, size.large, size.huge], inline='pl2', group = 'Display', display = display.none)
+
+showZigzag = input.bool(true, 'Zigzag', inline='z', group = 'Display', display = display.none)
+zigzagColor = input.color(color.blue, '', inline='z', group = 'Display', display = display.none, tooltip = 'Option to display zigzag within pattern and the default zigzag line color')
+
+deleteOldPatterns = input.bool(true, 'Max Patterns', inline='do', group = 'Display', display = display.none)
+maxPatterns = input.int(20, '', minval=1, step=5, inline = 'do', group = 'Display', display = display.none, tooltip = 'If selected, only last N patterns will be preserved on the chart.')
+
+errorRatio = errorThresold/100
+flatRatio = flatThreshold/100
+showLabel = true
+offset = 0
+
+type Scanner
+    bool enabled
+    string ticker
+    string timeframe
+    p.ScanProperties sProperties
+    p.DrawingProperties dProperties
+    array<p.Pattern> patterns
+    array<zg.Zigzag> zigzags
+
+method getZigzagAndPattern(Scanner this, int length, int depth, array<o.OHLC> ohlcArray, int offset=0)=>
+    var zg.Zigzag zigzag = zg.Zigzag.new(length, depth, 0)
+    var map<int, int> lastDBar = map.new<int, int>()
+    zigzag.calculate(array.from(highSource, lowSource))
+
+    var validPatterns = 0
+    mlzigzag = zigzag
+    if(zigzag.flags.newPivot)
+        while(mlzigzag.zigzagPivots.size() >= 6+offset)
+            lastBar = mlzigzag.zigzagPivots.first().point.index
+            lastDir = int(math.sign(mlzigzag.zigzagPivots.first().dir))
+            if(lastDBar.contains(mlzigzag.level)? lastDBar.get(mlzigzag.level) < lastBar : true)
+                lastDBar.put(mlzigzag.level, lastBar)
+                [valid, currentPattern] = mlzigzag.find(this.sProperties, this.dProperties, this.patterns, ohlcArray)
+                if(valid)
+                    validPatterns+=1
+                    currentPattern.draw()
+                    this.patterns.push(currentPattern, maxPatterns)
+                    alert('New Pattern Alert')
+            else
+                break
+            mlzigzag := mlzigzag.nextlevel()
+    true
+
+method scan(Scanner this)=>
+    var array<o.OHLC> ohlcArray = array.new<o.OHLC>()
+    var array<p.Pattern> patterns = array.new<p.Pattern>()
+    ohlcArray.push(o.OHLC.new(openSource, highSource, lowSource, closeSource))
+    if(useZigzag1)
+        this.getZigzagAndPattern(zigzagLength1, depth1, ohlcArray)
+    if(useZigzag2)
+        this.getZigzagAndPattern(zigzagLength2, depth2, ohlcArray)
+    if(useZigzag3)
+        this.getZigzagAndPattern(zigzagLength3, depth3, ohlcArray)
+    if(useZigzag4)
+        this.getZigzagAndPattern(zigzagLength4, depth4, ohlcArray)
+
+var scanner = Scanner.new(true, "", "", 
+             p.ScanProperties.new(
+                     offset, numberOfPivots, errorRatio, flatRatio, checkBarRatio, barRatioLimit, avoidOverlap, 
+                     allowedPatterns=allowedPatterns, allowedLastPivotDirections= allowedLastPivotDirections, themeColors = theme.getColors()),
+             p.DrawingProperties.new(
+                     patternLineWidth, showZigzag, 1, zigzagColor, showPatternLabel, patternLabelSize, 
+                     showPivotLabels, pivotLabelSize, deleteOnPop = deleteOldPatterns),
+             array.new<p.Pattern>())
+
+if(barstate.isconfirmed or repaint)
+    scanner.scan()
