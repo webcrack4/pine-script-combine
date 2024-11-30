@@ -12,7 +12,7 @@ target = input.int(0, "Set Targets")
 
 
 // ＶＡＲＩＡＢＬＥＳ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
-var bool trend    = na
+var bool tttrend    = na
 float trend_value = na
 
 // Colors
@@ -22,7 +22,7 @@ color dn_color = color.rgb(182, 112, 6)
 // ATR for calculating stop loss and target levels
 series float atr_value = ta.sma(ta.atr(200), 200) * 0.8
 
-// Moving averages for trend detection
+// Moving averages for tttrend detection
 series float sma_high  = ta.sma(high, length) + atr_value
 series float sma_low   = ta.sma(low, length) - atr_value
 color       plot_color = color.new(chart.fg_color, 80)
@@ -40,25 +40,25 @@ var TrendTargets targets_down = TrendTargets.new(array.new_line(), array.new_lab
 
 // ＣＡＬＣＵＬＡＴＩＯＮＳ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
   
-// Determine trend based on crossovers
+// Determine tttrend based on crossovers
 if ta.crossover(close, sma_high) and barstate.isconfirmed
-    trend := true
+    tttrend := true
 if ta.crossunder(close, sma_low) and barstate.isconfirmed
-    trend := false
+    tttrend := false
 
 trend_value := switch
-    trend     => sma_low
-    not trend => sma_high
+    tttrend     => sma_low
+    not tttrend => sma_high
 
-trend_color = trend ? up_color : not trend ? dn_color : na
-
-
-// Signal detection for trend changes
-bool signal_up   = ta.change(trend) and not trend[1]
-bool signal_down = ta.change(trend) and trend[1]
+trend_color = tttrend ? up_color : not tttrend ? dn_color : na
 
 
-// Method to draw trend targets and manage lines/labels
+// Signal detection for tttrend changes
+bool signal_up   = ta.change(tttrend) and not tttrend[1]
+bool signal_down = ta.change(tttrend) and tttrend[1]
+
+
+// Method to draw tttrend targets and manage lines/labels
 method draw_targets(TrendTargets targets, bool signal1, bool signal2, bool direction)=>
     float base           = direction ? sma_low : sma_high
     float atr_multiplier = atr_value * (direction ? 1 : -1)
@@ -67,10 +67,10 @@ method draw_targets(TrendTargets targets, bool signal1, bool signal2, bool direc
     var int count_up   = 0
     var int count_down = 0
 
-    if trend 
+    if tttrend 
         count_down := 0
         count_up += 1
-    if not trend 
+    if not tttrend 
         count_down += 1
         count_up := 0
 
@@ -90,7 +90,7 @@ method draw_targets(TrendTargets targets, bool signal1, bool signal2, bool direc
         array.clear(targets.lines)
         array.clear(targets.labels)
 
-        // Draw new lines for trend targets
+        // Draw new lines for tttrend targets
         line stop_loss_line = line.new(bar_index, base, bar_index + 20, base)
         line entry_line     = line.new(bar_index, close, bar_index + 20, close)
         line target1_line   = line.new(bar_index, close + target_len1, bar_index + 20, close + target_len1)
@@ -101,7 +101,7 @@ method draw_targets(TrendTargets targets, bool signal1, bool signal2, bool direc
         linefill.new(stop_loss_line, entry_line, color.new(dn_color, 95))
         linefill.new(entry_line, target3_line, color.new(up_color, 95))
 
-        // Draw new labels for trend targets
+        // Draw new labels for tttrend targets
         label stop_loss_label = label.new(bar_index + 20, base, str.tostring(math.round(base, 2)))
         label entry_label     = label.new(bar_index + 20, close, str.tostring(math.round(close, 2)))
         label target1_label   = label.new(bar_index + 20, close + target_len1, "１ - " + str.tostring(math.round(close + target_len1, 2)))
@@ -160,7 +160,7 @@ method draw_targets(TrendTargets targets, bool signal1, bool signal2, bool direc
         if high >= line.get_y2(targets.lines.first()) and low <= line.get_y2(targets.lines.first()) and count > 1
             first_label.set_text("  ✖  ")
 
-        if direction ? trend : not trend
+        if direction ? tttrend : not tttrend
             first_label.set_textcolor(#db1e1e)
             line_i.set_x2(bar_index + 20)
             targets.lines.first().set_color(#db1e1e)
@@ -178,7 +178,7 @@ method draw_targets(TrendTargets targets, bool signal1, bool signal2, bool direc
 targets_down.draw_targets(signal_down, signal_up, false)
 targets_up.draw_targets(signal_up, signal_down, true)
 
-// Plot candlesticks with trend color
+// Plot candlesticks with tttrend color
 plotcandle(open, high, low, close,
            title = 'Title', 
            color = trend_color,
@@ -186,8 +186,8 @@ plotcandle(open, high, low, close,
            bordercolor = trend_color)
 
 // Plot trailing stops
-p1 = plot(trend ? trend_value : na, style = plot.style_linebr, color = plot_color)
-p2 = plot(not trend ? trend_value : na, style = plot.style_linebr, color = plot_color)
+p1 = plot(tttrend ? trend_value : na, style = plot.style_linebr, color = plot_color)
+p2 = plot(not tttrend ? trend_value : na, style = plot.style_linebr, color = plot_color)
 p0 = plot(hl2, display = display.none, editable = false)
 fill(p1, p0, trend_value, hl2, color.new(chart.fg_color, 90), na)
 fill(p2, p0, trend_value, hl2, color.new(chart.fg_color, 90), na)
