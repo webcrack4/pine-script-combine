@@ -589,3 +589,33 @@ if time >= starttime
             countlinehi += 1
             array.set(tln, countlinehi - 1, line.new(dp2 - tlprd, dv2, dp1, dv1, color = dtcol))
 
+
+
+
+
+//////////////////////ema
+
+shortest = ema(close, 20)
+short = ema(close, 50)
+longer = ema(close, 100)
+longest = ema(close, 200)
+
+plot(shortest, color = color.red)
+plot(short, color =  color.orange)
+plot(longer, color =  color.aqua)
+plot(longest, color =  color.blue)
+
+
+//////////////////////rsi candle
+src = close, len = input(14, minval=1, title="Length")
+rsiup = rma(max(change(src), 0), len)
+down = rma(-min(change(src), 0), len)
+rsicandle = down == 0 ? 100 : rsiup == 0 ? 0 : 100 - (100 / (1 + rsiup / down))
+
+//coloring method below
+
+src1 = close, len1 = input(70, minval=1, title="UpLevel")
+src2 = close, len2 = input(30, minval=1, title="DownLevel")
+isup() => rsicandle > len1
+isdown() => rsicandle < len2
+barcolor(isup() ? color.green : isdown() ? color.red : na )
