@@ -1,18 +1,4 @@
 //@version=5
-// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
-//# * ══════════════════════════════════════════════════════════════════════════════════════════════
-//# *
-//# * Study       : MACD-X Overlay, More Than MACD
-//# * Author      : © dgtrd
-//# *
-//# * Revision History
-//# *  Release    : Mar 10, 2022 : Initial Release
-//# *
-//# * ══════════════════════════════════════════════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
-
-
-
 indicator("v5 combination by yzz", "MACD-X ʙʏ DGT ☼☾", true, max_lines_count = 500, max_boxes_count = 250, max_bars_back = 500)
 
 macdType      = input.string("MACD-SOURCE", "MACD Calculation Method", options=["MACD-TRADITIONAL", "MACD-AS (HISTOGRAM)", "MACD-LEADER", "MACD-SOURCE"])
@@ -22,12 +8,12 @@ source        = input(close, "Source")
 signal_length = input.int(9, "Signal Smoothing",  minval = 1, maxval = 50)
 sma_source    = input.string("EMA", "Oscillator MA Type" , options=["SMA", "EMA"])
 sma_signal    = input.string("EMA", "Signal Line MA Type", options=["SMA", "EMA"])
-macdSigCross  = input.bool(false, "Display MACD/Signal Corsses")
-highlight     = input.bool(false, "Highlight MACD/Signal Area")
+macdSigCross  = input.bool(true, "Display MACD/Signal Corsses")
+highlight     = input.bool(true, "Highlight MACD/Signal Area")
 lookbackLength= input.int(200, 'Overlay Indicator Display Length', minval = 10, maxval = 250) 
 oscPlacement  = input.string('Bottom', 'Placement', options = ['Top', 'Bottom'], inline='VOL')
-oscHight      = 12 - input.int(7, 'Hight' , minval = 1, maxval = 10  , inline='VOL' )
-verticalAdj   = input.int(3, "Vertical Indicator Position", minval = 0, maxval = 10) / 10
+oscHight      = 12 - input.int(10, 'Hight' , minval = 1, maxval = 10  , inline='VOL' )
+verticalAdj   = input.int(4, "Vertical Indicator Position", minval = 0, maxval = 10) / 10
 
 ma(s, l, m) => m == "EMA" ? ta.ema(s, l) : ta.sma(s, l)
 
