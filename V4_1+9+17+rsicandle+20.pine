@@ -9,7 +9,7 @@ maxpp = input(defval = 10, title = "Maximum Pivot Points to Check", minval = 1, 
 maxbars = input(defval = 100, title = "Maximum Bars to Check", minval = 30, maxval = 200)
 shownum = input(defval = true, title = "Show Divergence Number")
 showlast = input(defval = false, title = "Show Only Last Divergence")
-dontconfirm = input(defval = false, title = "Don't Wait for Confirmation")
+dontconfirm = input(defval = true, title = "Don't Wait for Confirmation")
 showlines = input(defval = true, title = "Show Divergence Lines")
 showpivot = input(defval = false, title = "Show Pivot Points")
 calcmacd = input(defval = true, title = "MACD")
