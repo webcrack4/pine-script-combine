@@ -1,0 +1,109 @@
+//@version=5
+// Credit to https://www.tradingview.com/script/pB5nv16J/ KivancOzbilgic - Turtle Trading Channels Indicatorr TUTCI
+// This is a modified version which suits OKX Signal Bot
+
+indicator(title='Turtle Trading Rules', shorttitle='TURTLE', overlay=true)
+entryLength = input.int(20, 'Entry Length', minval=1)
+exitLength = input.int(10, 'Exit Length', minval=1)
+showSignals = input(title='Show Entry/Exit Signals ?', defval=true)
+highlighting = input(title='Highlighter On/Off ?', defval=true)
+
+// OKX Signal Bot Inputs
+var ALERTGRP_CRED = "OKX Alert - Credential"
+signalToken = input("", "Signal Token", inline = "11", group = ALERTGRP_CRED)
+
+var ALERTGRP_ENTER = "OKX Alert - ENTER Signal"
+
+enterOrderType = input.string("market", "Order Type", options = ["market", "limit"], inline = "21", group = ALERTGRP_ENTER)
+enterOrderPriceOffset = input.float(0, "Order Price Offset", minval = 0, maxval = 100, step = 0.01, inline = "21", group = ALERTGRP_ENTER)
+
+enterInvestmentType = input.string("percentage_balance", "Investment Type", options = ["margin", "contract", "percentage_balance", "percentage_investment"], inline = "31", group = ALERTGRP_ENTER)
+enterAmount = input.float(100, "Amount", minval = 0.01, inline = "31", group = ALERTGRP_ENTER)
+
+var ALERTGRP_EXIT = "OKX Alert - EXIT Signal"
+
+exitOrderType = input.string("market", "Order Type", options = ["market", "limit"], inline = "41", group = ALERTGRP_EXIT)
+exitOrderPriceOffset = input.float(0, "Order Price Offset", minval = 0, maxval = 100, step = 0.01, inline = "41", group = ALERTGRP_EXIT)
+
+exitInvestmentType = input.string("percentage_position", "Investment Type", options = ["percentage_position"], inline = "51", group = ALERTGRP_EXIT)
+exitAmount = input.float(100, "Amount", minval = 0.01, maxval = 100, step = 0.01, inline = "51", group = ALERTGRP_EXIT)
+
+// OKX Signal Bot - Alert Msg Function
+getAlertMsg(action, instrument, signalToken, orderType, orderPriceOffset, investmentType, amount) =>
+    str = '{'
+    str := str + '"action": "' + action + '", '
+    str := str + '"instrument": "' + instrument + '", '
+    str := str + '"signalToken": "' + signalToken + '", '
+    str := str + '"timestamp": "' + str.format_time(timenow, "yyyy-MM-dd'T'HH:mm:ssZ", "UTC+0") + '", '
+    str := str + '"orderType": "' + orderType + '", '
+    str := str + '"orderPriceOffset": "' + str.tostring(orderPriceOffset) + '", '
+    str := str + '"investmentType": "' + investmentType + '", '
+    str := str + '"amount": "' + str.tostring(amount) + '"'
+    str := str + '}'
+    str
+
+lower = ta.lowest(entryLength)
+upper = ta.highest(entryLength)
+u = plot(upper, 'Upper', color=color.new(#0094FF, 0))
+l = plot(lower, 'Lower', color=color.new(#0094FF, 0))
+
+up = ta.highest(high, entryLength)
+down = ta.lowest(low, entryLength)
+sup = ta.highest(high, exitLength)
+sdown = ta.lowest(low, exitLength)
+entryLine = ta.barssince(high >= up[1]) <= ta.barssince(low <= down[1]) ? down : up
+barssince1 = ta.barssince(high >= up[1])
+barssince2 = ta.barssince(low <= down[1])
+exitLine = barssince1 <= barssince2 ? sdown : sup
+entryExitCondition1 = close > entryLine ? down : na
+entryExitCondition2 = close < entryLine ? up : na
+plot(entryLine, title='Trend Line', color=color.new(color.red, 0), linewidth=2)
+exitPlot = plot(exitLine, title='Exit Line', color=color.new(color.blue, 0), linewidth=1, style=plot.style_circles)
+
+buySignal = high == upper[1] or ta.crossover(high, upper[1])
+sellSignal = low == lower[1] or ta.crossover(lower[1], low)
+buyExit = low == sdown[1] or ta.crossover(sdown[1], low)
+sellExit = high == sup[1] or ta.crossover(high, sup[1])
+
+entryBarssince1 = ta.barssince(buySignal)
+entryBarssince2 = ta.barssince(sellSignal)
+exitBarssince1 = ta.barssince(buyExit)
+exitBarssince2 = ta.barssince(sellExit)
+
+entryBarssincePrev1 = ta.barssince(buySignal[1])
+entryBarssincePrev2 = ta.barssince(sellSignal[1])
+exitBarssincePrev1 = ta.barssince(buyExit[1])
+exitBarssincePrev2 = ta.barssince(sellExit[1])
+
+// ENTER_LONG Condition
+plotshape(buySignal and exitBarssince1 < entryBarssince1[1] ? down : na, title='Long Entry', location=location.absolute, style=shape.circle, size=size.tiny, color=color.new(color.green, 0))
+plotshape(buySignal and showSignals and exitBarssince1 < entryBarssince1[1] ? down : na, title='Long', text='Long Entry', location=location.absolute, style=shape.labelup, size=size.tiny, color=color.new(color.green, 0), textcolor=color.new(color.white, 0))
+if buySignal and exitBarssince1 < entryBarssince1[1]
+    buyAlertMsg = getAlertMsg(action = 'ENTER_LONG', instrument = syminfo.ticker, signalToken = signalToken, orderType = enterOrderType, orderPriceOffset = enterOrderPriceOffset, investmentType = enterInvestmentType, amount = enterAmount)
+    alert(buyAlertMsg, freq = alert.freq_once_per_bar)
+
+// ENTER_SHORT Condition
+plotshape(sellSignal and exitBarssince2 < entryBarssince2[1] ? up : na, title='Short Entry', location=location.absolute, style=shape.circle, size=size.tiny, color=color.new(color.red, 0))
+plotshape(sellSignal and showSignals and exitBarssince2 < entryBarssince2[1] ? up : na, title='Short', text='Short Entry', location=location.absolute, style=shape.labeldown, size=size.tiny, color=color.new(color.red, 0), textcolor=color.new(color.white, 0))
+if sellSignal and exitBarssince2 < entryBarssince2[1]
+    buyAlertMsg = getAlertMsg(action = 'ENTER_SHORT', instrument = syminfo.ticker, signalToken = signalToken, orderType = enterOrderType, orderPriceOffset = enterOrderPriceOffset, investmentType = enterInvestmentType, amount = enterAmount)
+    alert(buyAlertMsg, freq = alert.freq_once_per_bar)
+
+// EXIT_LONG Condition
+plotshape(buyExit and entryBarssince1 < exitBarssince1[1] ? up : na, title='Long Exit', location=location.absolute, style=shape.circle, size=size.tiny, color=color.new(color.maroon, 0))
+plotshape(buyExit and showSignals and entryBarssince1 < exitBarssince1[1] ? up : na, title='Long Exit', text='Exit Long', location=location.absolute, style=shape.labeldown, size=size.tiny, color=color.new(color.maroon, 0), textcolor=color.new(color.white, 0))
+if buyExit and entryBarssince1 < exitBarssince1[1]
+    sellAlertMsg = getAlertMsg(action = 'EXIT_LONG', instrument = syminfo.ticker, signalToken = signalToken, orderType = exitOrderType, orderPriceOffset = exitOrderPriceOffset, investmentType = exitInvestmentType, amount = exitAmount)
+    alert(sellAlertMsg, freq = alert.freq_once_per_bar)
+
+// EXIT_SHORT Condition
+plotshape(sellExit and entryBarssince2 < exitBarssince2[1] ? down : na, title='Short Exit', location=location.absolute, style=shape.circle, size=size.tiny, color=color.new(color.purple, 0))
+plotshape(sellExit and showSignals and entryBarssince2 < exitBarssince2[1]  ? down : na, title='Short', text='Exit Short', location=location.absolute, style=shape.labelup, size=size.tiny, color=color.new(color.purple, 0), textcolor=color.new(color.white, 0))
+if sellExit and entryBarssince2 < exitBarssince2[1] 
+    sellAlertMsg = getAlertMsg(action = 'EXIT_SHORT', instrument = syminfo.ticker, signalToken = signalToken, orderType = exitOrderType, orderPriceOffset = exitOrderPriceOffset, investmentType = exitInvestmentType, amount = exitAmount)
+    alert(sellAlertMsg, freq = alert.freq_once_per_bar)
+
+color1 = highlighting and math.min(entryBarssince1, entryBarssince2, exitBarssince1) == entryBarssince1 ? color.new(color.green, transp = 88) : na
+color2 = highlighting and math.min(entryBarssince1, entryBarssince2, exitBarssince2) == entryBarssince2 ? color.new(color.red, transp = 88) : na
+fill(u, exitPlot, color=color1, title='Background')
+fill(l, exitPlot, color=color2, title='Background')
