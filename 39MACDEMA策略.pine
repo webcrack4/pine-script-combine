@@ -1,0 +1,30 @@
+source3 = input(close)
+fastLength = input.int(12, minval=1, title="MACD fast moving average")
+slowLength = input.int(26, minval=1, title="MACD slow moving average")
+signalLength = input.int(9, minval=1, title="MACD signal line moving average")
+veryslowLength = input.int(200, minval=1, title="Very slow moving average")
+switch1 = input.bool(true, title="Enable Bar Color?")
+switch2 = input.bool(true, title="Enable Moving Averages?")
+switch3 = input.bool(true, title="Enable Background Color?")
+
+// Calculation
+fastMA = ta.sma(source3, fastLength)
+slowMA = ta.sma(source3, slowLength)
+veryslowMA = ta.sma(source3, veryslowLength)
+macd3 = fastMA - slowMA
+signal3 = ta.sma(macd3, signalLength)
+hist3 = macd3 - signal3
+
+// Colors
+MAtrendcolor = ta.change(veryslowMA) > 0 ? color.green : color.red
+trendcolor = (fastMA > slowMA and ta.change(veryslowMA) > 0 and close > slowMA) ? color.green : (fastMA < slowMA and ta.change(veryslowMA) < 0 and close < slowMA) ? color.red : color.blue
+bartrendcolor = (close > fastMA and close > slowMA and close > veryslowMA and ta.change(slowMA) > 0) ? color.green : (close < fastMA and close < slowMA and close < veryslowMA and ta.change(slowMA) < 0) ? color.red : color.blue
+backgroundcolor = (slowMA > veryslowMA and ta.crossover(hist3, 0) and macd3 > 0 and fastMA > slowMA and close[slowLength] > veryslowMA) ? color.green : (slowMA < veryslowMA and ta.crossunder(hist3, 0) and macd < 0 and fastMA < slowMA and close[slowLength] < veryslowMA) ? color.red : na
+bgcolor(backgroundcolor, transp=80)
+barcolor(bartrendcolor)
+
+// Output
+F = plot(fastMA, color=trendcolor, title="Fast MA")
+S = plot(slowMA, color=trendcolor, linewidth=2, title="Slow MA")
+V = plot(veryslowMA, color=MAtrendcolor, linewidth=4, title="Very Slow MA")
+fill(F, V, color=color.gray, title="Fill between MA lines")
